@@ -1,0 +1,120 @@
+name: Terraform Deployment
+
+trigger:
+  branches:
+    include:
+      - main
+
+jobs:
+  - job: TerraformPlan
+    displayName: Terraform Plan
+    
+    steps:
+      - script: 'terraform version'
+        displayName: 'Terraform Version'
+
+      - script: 'terraform -chdir=Terraform/main/ init -input=false'
+        displayName: 'Init'
+        env:
+          ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+          ARM_TENANT_ID: $(ARM_TENANT_ID)
+          ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+          ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+
+      - script: 'terraform -chdir=Terraform/main/ validate'
+        displayName: 'Validate'
+
+      - script: 'terraform -chdir=Terraform/main/ plan -input=false'
+        displayName: 'Plan'
+        env:
+          ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+          ARM_TENANT_ID: $(ARM_TENANT_ID)
+          ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+          ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+
+
+
+  - job: TerraformApply
+    displayName: Terraform Apply
+  
+    steps:
+      - script: 'terraform -chdir=Terraform/main/ init -input=false'
+        displayName: 'Init'
+        env:
+          ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+          ARM_TENANT_ID: $(ARM_TENANT_ID)
+          ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+          ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+
+      - script: 'terraform -chdir=Terraform/main/ apply -auto-approve -input=false'
+        displayName: 'Apply'
+        env:
+          ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+          ARM_TENANT_ID: $(ARM_TENANT_ID)
+          ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+          ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+
+
+  - job: CI
+    displayName: CI
+    
+    steps:
+      - task: UseDotNet@2
+        displayName: 'Install .NET SDK'
+        inputs:
+          version: '7.0.x'
+
+      - task: DotNetCoreCLI@2
+        displayName: 'Restore NuGet packages'
+        inputs:
+          command: 'restore'
+          projects: '**/*.csproj'
+
+      - task: DotNetCoreCLI@2
+        displayName: 'Build the application'
+        inputs:
+          command: 'build'
+          projects: '**/*.csproj'
+          arguments: '--configuration $(buildConfiguration)'
+
+      - task: DotNetCoreCLI@2
+        displayName: 'Run unit tests'
+        inputs:
+          command: 'test'
+          projects: '**/*Tests.csproj'
+          arguments: '--configuration $(buildConfiguration) --collect:"XPlat Code Coverage"'
+
+      - task: DotNetCoreCLI@2
+        displayName: 'Publish the application'
+        inputs:
+          command: 'publish'
+          projects: '**/*.csproj'
+          publishWebProjects: true
+          arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/publish'
+
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish artifacts'
+        inputs:
+          artifactName: 'publish'
+          targetPath: '$(Build.ArtifactStagingDirectory)/publish'
+
+
+  # - job: CD
+  #   displayName: Deploy to Azure Web App - CD
+  #   dependsOn: CI
+  #   steps:
+  #     - task: DownloadPipelineArtifact@2
+  #       displayName: 'Download artifacts'
+  #       inputs:
+  #         artifactName: 'publish'
+  #         downloadPath: '$(Pipeline.Workspace)/publish'
+
+  #     - task: AzureRmWebAppDeployment@4
+  #       displayName: 'Deploy to Azure Web App'
+  #       inputs:
+  #         azureSubscription: 'myservice'
+  #         appName: 'https://techslate-webapp-321.azurewebsites.net/'
+  #         package: '$(Pipeline.Workspace)/publish/**/*.zip'
+  #         enableCustomDeployment: true
+  #         deploymentType: 'webDeploy'
+  #         removeAdditionalFilesFlag: true
